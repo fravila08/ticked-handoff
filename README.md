@@ -65,7 +65,8 @@ ticked/
 │   ├── schema.sql                ← the source of truth for the database
 │   ├── user_stories.md
 │   └── task-manager-erd.png      (the original design, before logins)
-└── CLAUDE.md                     ← read this second
+├── CLAUDE.md                     ← read this second
+└── .gitignore                    (.env, .mcp.json, node_modules, dist)
 ```
 
 **A request, start to finish:**
@@ -132,7 +133,7 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 | React Router setup | React Router 7. Routes are in `src/App.jsx` | Put `/donate` **inside** `<RequireAuth>` so only logged-in users see it. |
 | Supabase CLI "installed, authenticated, and linked" | Not set up yet: `supabase/` only has `schema.sql` | From the repo root: `npx supabase login`, then `npx supabase init` (adds `supabase/config.toml` next to `schema.sql`), then `npx supabase link --project-ref <ref>`. Functions go in `supabase/functions/`. |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY`, `VITE_STRIPE_PUBLIC_KEY` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | Keep Ticked's names; add `VITE_STRIPE_PUBLIC_KEY` to `front-end/.env` and to Vercel. |
-| A root `.env` for `DOG_API_KEY` (server secrets) | Only `front-end/.env`, and no root `.gitignore` | That root `.env` needs its own `.gitignore` line. Check `git status` before every commit. Deployed functions read secrets from `npx supabase secrets set`. |
+| A root `.env` for `DOG_API_KEY` (server secrets) | `front-end/.env` for the browser; the root `.gitignore` already covers a root `.env` and `.mcp.json` | Check `git status` before every commit anyway. Deployed functions read secrets from `npx supabase secrets set`. |
 | `donations.user_id` → `auth.users` | Ticked's tables point to `public.users` (same ids) | Either works. Follow the tasks table to stay consistent. |
 | `main` / `dev` / `feature/*` branches | Only `main` | Create `dev` at the start of the DevOps lesson. |
 
