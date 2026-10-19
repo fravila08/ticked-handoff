@@ -120,6 +120,7 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 - `front-end/` + `supabase/` side by side, one `.claude/` in the root, and the Supabase MCP in the root `.mcp.json`.
 - `front-end/.env` holds the URL and publishable key, and `.env` is listed in `front-end/.gitignore`.
 - Supabase Auth with register, log in, log out and staying logged in after a refresh. Plus `public.users` filled by a trigger, and RLS with `auth.uid()`.
+- **Each student's app was built live by Claude**, so it does the same things as this repo but the code differs: file names, a "confirm password" field, the exact policy names. Database rules are the same everywhere: `user_id` defaults to `auth.uid()`, and policies are `to authenticated` with `auth.uid() = user_id`. The front end never sends a `user_id`.
 - **Students' env variable names vary.** Claude picked them: `VITE_SUPABASE_ANON_KEY`, `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_KEY`. They all mean the publishable key.
 - This cohort started in Phase III, so **don't assume they've seen Django**.
 
@@ -161,3 +162,7 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 - **Email:** Confirm email is **off** in the class projects. Supabase's built-in email sender is rate-limited (a few emails an hour), so turning it back on needs a custom SMTP provider.
 - **The `create_task_with_tags` RPC** is the one custom endpoint. It saves a task and its tags in one transaction, and it runs as the caller (`security invoker`) so RLS applies.
 - **Tags are shared** by all users on purpose (no `user_id`).
+- **Security Advisor warnings you'll see** (Supabase → Advisors):
+  - `rls_auto_enable()` "can be called by anon/authenticated". It's Supabase's own function: it turns RLS on for every new table. **Don't drop it.** To silence the warning, ask Claude to `revoke execute on function rls_auto_enable() from anon, authenticated` (the function keeps working).
+  - "Leaked password protection is off": an Auth setting. Optional.
+- **Test accounts:** Playwright made throwaway accounts and deleted them. The class registered real ones (e.g. maria@ / sam@ticked.app) by hand. Delete leftovers in Authentication → Users; deleting an account deletes its rows too (cascade).
