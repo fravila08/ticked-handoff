@@ -6,6 +6,7 @@ This is where the class left off **at the end of 09-Building-Applications / 4-au
 
 - [Run it](#run-it)
 - [How it fits together](#how-it-fits-together)
+- [Set up Claude Code like the class demo](#set-up-claude-code-like-the-class-demo)
 - [Handoff notes for the next instructor](#handoff-notes-for-the-next-instructor)
 
 ---
@@ -33,13 +34,7 @@ You need Node 20+, a free Supabase project, and about 10 minutes.
    ```
    Register an account, add a task, and refresh: you're still logged in. Open a private window and register a second account: it sees none of the first account's tasks.
 
-**Claude Code** (optional; run from the repo root):
-
-```bash
-claude mcp add --scope project --transport http supabase "https://mcp.supabase.com/mcp?project_ref=<your-project-ref>"
-```
-
-`.mcp.json` holds your project ref, so it is **not** in this repo. Each person adds their own. Playwright and Context7 are user-level MCPs (`claude mcp list`).
+**Claude Code:** to get the same MCP servers, skills and sub-agents the class used, follow [Set up Claude Code like the class demo](#set-up-claude-code-like-the-class-demo).
 
 ---
 
@@ -102,6 +97,119 @@ auth.users ──trigger──► public.users (id, name, email)
 
 ---
 
+## Set up Claude Code like the class demo
+
+The class demo uses **Claude Code in the terminal** with:
+
+- **3 user-level MCP servers:** Playwright, Context7, Chrome DevTools.
+- **1 project-level MCP server:** Supabase.
+- **5 project skills.**
+- **2 sub-agents.**
+
+The skills and sub-agents are already in this repo (`.claude/`). Only the MCP servers need adding: run each command yourself, so you approve what gets installed.
+
+```
+your computer (every project)          this repo (.claude/ and .mcp.json)
+├── playwright       (user MCP)        ├── .mcp.json → supabase  (project MCP, NOT committed)
+├── context7         (user MCP)        ├── .claude/skills/   5 skills   (committed)
+└── chrome-devtools  (user MCP)        └── .claude/agents/   2 agents   (committed)
+```
+
+### 1 · Install the tools (once per computer)
+
+- **Node 20+** and **git**.
+- **Claude Code**, then log in:
+  ```bash
+  curl -fsSL https://claude.ai/install.sh | bash
+  claude          # first run: log in with your Claude account, then /exit
+  ```
+
+### 2 · The user-level MCP servers (once per computer)
+
+In a normal terminal (not inside Claude Code):
+
+```bash
+claude mcp add --scope user playwright -- npx -y @playwright/mcp@latest
+claude mcp add --scope user context7 -- npx -y @upstash/context7-mcp
+claude mcp add --scope user chrome-devtools -- npx -y chrome-devtools-mcp@latest
+claude mcp list        # all three: ✔ Connected
+```
+
+| MCP server | What the class uses it for |
+|---|---|
+| **Playwright** | Claude opens the app in a browser, clicks through it and checks each phase ("utilize playwright to ensure completion") |
+| **Context7** | Up-to-date library docs (supabase-js, React Router, Vite) instead of Claude's memory |
+| **Chrome DevTools** | Console errors, network requests and performance from a real Chrome |
+
+If one says it already exists, that's fine.
+
+### 3 · The Supabase MCP server (once per project)
+
+From the **repo root**, not `front-end/`. Use your project ref, from your Supabase URL `https://<project-ref>.supabase.co`:
+
+```bash
+claude mcp add --scope project --transport http supabase "https://mcp.supabase.com/mcp?project_ref=<your-project-ref>"
+```
+
+1. That writes `.mcp.json` in the root. It holds your project ref, so it is in `.gitignore`: **never commit it**.
+2. Start `claude` in the root. When it asks about the new MCP server, choose **Use this MCP server**.
+3. Type `/mcp` → **supabase** → **Authenticate**. Approve in the browser tab that opens, then come back.
+
+`project_ref=` limits Claude to this one project. Never give Claude the database password or the secret key; the MCP doesn't need them.
+
+### 4 · Skills (already in the repo)
+
+They're in `.claude/skills/`, so cloning gives them to you. Check with `/skills`:
+
+| Skill | `/skills` shows | What it's for | Source |
+|---|---|---|---|
+| frontend-design | `frontend-design` | Distinct visual direction for UI work | [anthropics/skills](https://github.com/anthropics/skills) |
+| ui-ux-pro-max | `ui-ux-pro-max` | UI/UX rules, palettes, font pairings | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) |
+| taste-skill | `design-taste-frontend` (this name is correct) | Anti-"AI look" art direction | [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) |
+| design-motion-principles | `design-motion-principles` | Animation and interaction | [kylezantos/design-motion-principles](https://github.com/kylezantos/design-motion-principles) |
+| postgresql-table-design | `postgresql-table-design` | Table design, types, indexes, constraints | [wshobson/agents](https://github.com/wshobson/agents) |
+
+**Adding them to a new project** (run in that project's root; these are the scripts students used):
+
+```bash
+curl -fsSL https://kabeier.github.io/SPAs-and-Claude/lecture-2-building-spas/demo-kit/setup-skills.sh | bash      # the 4 design skills
+curl -fsSL https://raw.githubusercontent.com/kabeier/Databases-and-Supabase/main/demo-kit/setup-db-skill.sh | bash  # postgresql-table-design
+```
+
+If a script fails, the [manual install guide](https://kabeier.github.io/SPAs-and-Claude/setup-guide.html) does the same thing by hand.
+
+### 5 · Sub-agents (already in the repo)
+
+They're in `.claude/agents/`. Check with `/agents`:
+
+| Agent | Curriculum name | MCP servers it uses | Skills it loads |
+|---|---|---|---|
+| **front-end-agent** | "UI agent" | context7, playwright, chrome-devtools | frontend-design, ui-ux-pro-max, design-taste-frontend, design-motion-principles |
+| **supabase-agent** (the curriculum's text, word for word) | "Supabase agent" | supabase, context7 | postgresql-table-design |
+
+Both run on `model: sonnet` (in each file's frontmatter); the main session is the supervisor. An agent can only use an MCP server that's installed, which is why all four servers above are needed.
+
+### 6 · Session habits from class
+
+- Start `claude` in the **repo root**, where `.mcp.json` and `.claude/` are.
+- `/model` → **Opus** for the big multi-step prompts.
+- Use normal permission prompts: no skip-permissions flags. Approve MCP calls one by one. For file edits, "Yes, allow all edits during this session" is fine.
+
+### Check it
+
+Inside `claude`, from the repo root:
+
+| Type | You should see |
+|---|---|
+| `/mcp` | playwright, context7, chrome-devtools, **supabase** (authenticated) |
+| `/skills` | the 5 skills above |
+| `/agents` | front-end-agent, supabase-agent |
+| `/model` | Opus selected |
+
+Then a quick test prompt: *"Using the Supabase MCP, list my tables. Don't change anything."* It should list users, projects, tasks, tags and task_tags.
+
+---
+
 ## Handoff notes for the next instructor
 
 ### Where the class is
@@ -148,7 +256,7 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 ### Claude Code setup the class is used to
 
 - **Plain `claude`**, with normal permission prompts. Students choose "Yes, allow all edits during this session" and approve MCP calls one by one.
-- **MCP servers are added with typed commands**, never a script: `claude mcp add …`. The Supabase one is project-scoped, in the root `.mcp.json`. Playwright and Context7 are user-scoped.
+- **MCP servers are added with typed commands**, never a script: `claude mcp add …` (see [the setup](#set-up-claude-code-like-the-class-demo)). The Supabase one is project-scoped, in the root `.mcp.json`. Playwright, Context7 and Chrome DevTools are user-scoped.
 - **Sub-agents** are in `.claude/agents/`:
   - `front-end-agent` maps to the curriculum's "UI agent".
   - `supabase-agent` (the curriculum's text, word for word) maps to the "Supabase agent".
