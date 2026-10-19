@@ -163,6 +163,30 @@ button {
   display: none;
 }
 
+/* who is logged in + Log out, at the right of the top bar */
+.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* a long name is cut short with "…" rather than pushing the button off screen */
+.account-name {
+  max-width: 14ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.account .btn {
+  flex: none;
+  white-space: nowrap;
+}
+
 .page {
   max-width: 560px;
   margin: 0 auto;
@@ -170,6 +194,25 @@ button {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Register / Log in: no tab bar underneath, so no room needed for it */
+.page-auth {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 48px);
+}
+
+/* "New to Ticked? Create an account" under the form */
+.auth-switch {
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.auth-switch a {
+  display: inline-block;
+  padding: 12px 4px;
+  color: var(--ink);
+  font-weight: 700;
+  text-underline-offset: 3px;
 }
 
 /* ---------- bottom tab bar (phones) ---------- */
@@ -1133,7 +1176,9 @@ legend.label {
 /* ---------- wide screens: nav moves to the top bar ---------- */
 
 @media (min-width: 768px) {
+  /* wider than the page column, so the nav, the name and Log out fit on one line */
   .topbar {
+    max-width: 760px;
     padding: 20px 20px 4px;
   }
 
@@ -1195,71 +1240,4 @@ legend.label {
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;
   }
-}
-
-/* ---------- accounts: Log in, Register, who's logged in ---------- */
-.account {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.account-name {
-  color: var(--ink-2);
-  font-size: 0.9375rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 12ch;
-}
-
-.auth-screen {
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-}
-
-.auth-main {
-  width: 100%;
-  max-width: 420px;
-  padding: 48px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.auth-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  align-self: center;
-}
-
-.auth-card .page-title {
-  margin: 0;
-}
-
-.auth-switch {
-  margin: 4px 0 0;
-  text-align: center;
-  color: var(--ink-2);
-}
-
-.auth-switch a {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.auth-notice {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--sage-bg);
-  color: var(--sage-ink);
-}
-
-.auth-config-error {
-  margin: 0;
 }

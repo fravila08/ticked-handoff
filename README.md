@@ -2,7 +2,7 @@
 
 Ticked is the running example app for Code Platoon Phase III. It's a React + Vite task manager (tasks, projects, tags, due dates) on Supabase, with **Supabase Auth** logins. Each person sees only their own projects and tasks, and the database enforces that with Row Level Security.
 
-This is where the class left off **at the end of 09-Building-Applications / 4-authentication**. It's ready for **10-Beyond-Building**.
+This is **the class's own Ticked**, exactly where the class left off **at the end of 09-Building-Applications / 4-authentication**: Claude built it live in the lectures, with the students approving each step. It's ready for **10-Beyond-Building**. (Added at handoff: `supabase-agent`, `vercel.json`, a root `.gitignore`, and this README.)
 
 - [Run it](#run-it)
 - [How it fits together](#how-it-fits-together)
@@ -22,11 +22,11 @@ You need Node 20+, a free Supabase project, and about 10 minutes.
 3. **Keys:**
    ```bash
    cd front-end
-   cp .env.example .env
+   cp .env.example .env.local
    ```
    - Fill in `VITE_SUPABASE_URL`: Integrations → Data API → Project URL, **without** `/rest/v1/` and with no trailing slash.
    - Fill in `VITE_SUPABASE_PUBLISHABLE_KEY`: Project Settings → API Keys → publishable key.
-   - `.env` is in `front-end/.gitignore`.
+   - `.env.local` is gitignored (`*.local` in `front-end/.gitignore`). Never commit it.
 4. **Start it:**
    ```bash
    npm install
@@ -49,19 +49,21 @@ ticked/
 ├── front-end/       the React app (= the curriculum's "client/")
 │   ├── app_outline/ user journey, style guide, a wireframe and user story per page
 │   ├── src/
-│   │   ├── data/db.js            ← the ONLY file that talks to Supabase
+│   │   ├── data/db.js            ← the ONLY file that talks to Supabase (logins too)
 │   │   ├── context/AuthContext   ← who is logged in: useAuth()
 │   │   ├── context/TaskContext   ← their data: useTasks()
-│   │   ├── components/RequireAuth.jsx, AuthLayout.jsx, TopBar.jsx …
-│   │   └── pages/Login, Register, Tasks, NewTask, Projects, ProjectDetail
-│   ├── .env.example
-│   └── vercel.json  (SPA rewrite for Vercel)
+│   │   ├── components/           RequireAuth, AuthLayout, FormField, TopBar (name + Log out) …
+│   │   ├── pages/                Login, Register, Tasks, NewTask, Projects, ProjectDetail, NotFound
+│   │   └── utils/                dates, task sorting, tag colours
+│   ├── screenshots/              the four main pages
+│   ├── .env.example              copy to .env.local
+│   └── vercel.json               SPA rewrite for Vercel (added at handoff)
 ├── supabase/
 │   ├── schema.sql                ← the source of truth for the database
 │   ├── user_stories.md
 │   └── task-manager-erd.png      (the original design, before logins)
 ├── CLAUDE.md                     ← read this second
-└── .gitignore                    (.env, .mcp.json, node_modules, dist)
+└── .gitignore                    (.env, .env.local, .mcp.json, node_modules, dist)
 ```
 
 **A request, start to finish:**
@@ -79,6 +81,17 @@ Ticked ──► db.js ──► GET /rest/v1/tasks
                RLS: auth.uid() = user_id  → only their rows come back
 ```
 
+**What the front end can call** (all in `front-end/src/data/db.js`):
+
+| Area | Functions |
+|---|---|
+| Accounts | `register({ name, email, password })`, `logIn({ email, password })`, `logOut()`, `getCurrentUser()`. Each returns the profile `{ id, name, email }` from `public.users` (or `null`) |
+| Projects | `listProjects`, `createProject`, `deleteProject` |
+| Tasks | `listTasks` (with their tags), `createTask` (the `create_task_with_tags` RPC), `setTaskComplete`, `deleteTask` |
+| Tags | `listTags`, `createTag` |
+
+Supabase Auth errors come back in the app's own words ("Wrong email or password", "An account with this email already exists"), with `err.field` saying which input they belong under.
+
 **The database:**
 
 ```
@@ -94,6 +107,8 @@ auth.users ──trigger──► public.users (id, name, email)
 | Logged in, your rows | 200 / 201 / 204 |
 | Logged in, adding a row as someone else | **403** "violates row-level security policy" |
 | Logged in, PATCH or DELETE someone else's row | **204**, but nothing changes (RLS hides the row) |
+| Logged in, a task in someone else's project | **403** (the task policies check the project's owner too) |
+| Logged in, changing your own email in `users` | **403**: only `name` is editable (a column grant) |
 
 ---
 
@@ -226,7 +241,7 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 **What every student project should look like now** (their personal project and the Netflix clone):
 
 - `front-end/` + `supabase/` side by side, one `.claude/` in the root, and the Supabase MCP in the root `.mcp.json`.
-- `front-end/.env` holds the URL and publishable key, and `.env` is listed in `front-end/.gitignore`.
+- `front-end/.env` or `front-end/.env.local` holds the URL and publishable key, and is gitignored.
 - Supabase Auth with register, log in, log out and staying logged in after a refresh. Plus `public.users` filled by a trigger, and RLS with `auth.uid()`.
 - **Each student's app was built live by Claude**, so it does the same things as this repo but the code differs: file names, a "confirm password" field, the exact policy names. Database rules are the same everywhere: `user_id` defaults to `auth.uid()`, and policies are `to authenticated` with `auth.uid() = user_id`. The front end never sends a `user_id`.
 - **Students' env variable names vary.** Claude picked them: `VITE_SUPABASE_ANON_KEY`, `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_KEY`. They all mean the publishable key.
@@ -238,11 +253,11 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 |---|---|---|
 | `client/` folder, Vercel **Root Directory** `client/` | `front-end/` | Root Directory = `front-end`. `cd front-end` wherever the lesson says `cd client`. |
 | "Your existing Axios instance" (Stripe prompt) | **No Axios.** All calls go through `front-end/src/data/db.js` with supabase-js | Either: "Call Edge Functions with `supabase.functions.invoke()` inside db.js" (it sends the user's JWT for you), or `npm install axios` first and have Claude add one instance in db.js. |
-| "Your existing auth context" | `useAuth()` from `src/context/useAuth.js`: `user.id`, `user.email`, `profile.name`, `session.access_token` | — |
+| "Your existing auth context" | `useAuth()` from `src/context/useAuth.js`: `user` (the profile `{ id, name, email }`, or `null`), `checking`, `register`, `logIn`, `logOut`. It does **not** expose the session or token | Need the token (e.g. for an Edge Function)? Keep it in db.js: `supabase.functions.invoke()` sends it automatically, or read it with `supabase.auth.getSession()` there. |
 | React Router setup | React Router 7. Routes are in `src/App.jsx` | Put `/donate` **inside** `<RequireAuth>` so only logged-in users see it. |
 | Supabase CLI "installed, authenticated, and linked" | Not set up yet: `supabase/` only has `schema.sql` | From the repo root: `npx supabase login`, then `npx supabase init` (adds `supabase/config.toml` next to `schema.sql`), then `npx supabase link --project-ref <ref>`. Functions go in `supabase/functions/`. |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY`, `VITE_STRIPE_PUBLIC_KEY` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | Keep Ticked's names; add `VITE_STRIPE_PUBLIC_KEY` to `front-end/.env` and to Vercel. |
-| A root `.env` for `DOG_API_KEY` (server secrets) | `front-end/.env` for the browser; the root `.gitignore` already covers a root `.env` and `.mcp.json` | Check `git status` before every commit anyway. Deployed functions read secrets from `npx supabase secrets set`. |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY`, `VITE_STRIPE_PUBLIC_KEY` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` in `front-end/.env.local` | Keep Ticked's names; add `VITE_STRIPE_PUBLIC_KEY` to `front-end/.env.local` and to Vercel. |
+| A root `.env` for `DOG_API_KEY` (server secrets) | `front-end/.env.local` for the browser; the root `.gitignore` already covers a root `.env` and `.mcp.json` | Check `git status` before every commit anyway. Deployed functions read secrets from `npx supabase secrets set`. |
 | `donations.user_id` → `auth.users` | Ticked's tables point to `public.users` (same ids) | Either works. Follow the tasks table to stay consistent. |
 | `main` / `dev` / `feature/*` branches | Only `main` | Create `dev` at the start of the DevOps lesson. |
 
@@ -269,7 +284,11 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 - **Status codes:** the anon role gets 401 when RLS refuses; a logged-in user gets 403. A PATCH or DELETE that matches nothing still returns 204. Students have seen all three.
 - **Email:** Confirm email is **off** in the class projects. Supabase's built-in email sender is rate-limited (a few emails an hour), so turning it back on needs a custom SMTP provider.
 - **The `create_task_with_tags` RPC** is the one custom endpoint. It saves a task and its tags in one transaction, and it runs as the caller (`security invoker`) so RLS applies.
-- **Tags are shared** by all users on purpose (no `user_id`).
+- **Tags are shared** by all users on purpose (no `user_id`). Any signed-in user can add one; nobody can edit or delete them.
+- **Profiles:** users can rename themselves but not change their email (locked by a column grant). Emails are unique ignoring case.
+- **No seed data.** In class, the pre-login test data was backed up to CSV and **not** re-imported (it belonged to a Demo User with no login). The CSVs aren't in this repo. New accounts start empty.
+- **`rls_auto_enable()`** is in the live project but not in `schema.sql` (Supabase added it). Never drop it.
+- **`front-end/.env` (no `.local`)** may exist on the class machine from Friday with an old `VITE_SUPABASE_ANON_KEY` line. Vite reads both files and `.env.local` wins; the app only uses `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, so the old line is ignored. Both files are gitignored.
 - **Security Advisor warnings you'll see** (Supabase → Advisors):
   - `rls_auto_enable()` "can be called by anon/authenticated". It's Supabase's own function: it turns RLS on for every new table. **Don't drop it.** To silence the warning, ask Claude to `revoke execute on function rls_auto_enable() from anon, authenticated` (the function keeps working).
   - "Leaked password protection is off": an Auth setting. Optional.

@@ -1,28 +1,36 @@
 // =====================================================================
-// db.js: the ONLY file in Ticked that talks to Supabase.
+// db.js: the ONLY file in Ticked that reads or changes data.
 //
-// Two jobs:
-//   1. ACCOUNTS (Supabase Auth): register, log in, log out, and "who is
-//      logged in right now?"
-//   2. DATA (Supabase's auto-generated REST API), in the tables from
-//      supabase/schema.sql:
+// The data now lives in a real Supabase (Postgres) database, in the
+// tables from schema.sql:
 //
-//   users      (id, name, email, created_at)    <- mirrors auth.users
 //   projects   (id, name, description, user_id, created_at)
 //   tasks      (id, title, is_complete, due_date, project_id, user_id, created_at)
-//   tags       (id, name)                        <- shared by everyone
-//   task_tags  (task_id, tag_id)
+//   tags       (id, name)
+//   task_tags  (task_id, tag_id)   <- joins tasks and tags (many-to-many)
 //
-// How the database knows who is asking:
-//   After log in, supabase-js keeps the user's ACCESS TOKEN (a JWT) and
-//   sends it on every request:  Authorization: Bearer <access token>
-//   Supabase checks the token and hands the user's id to Postgres as
-//   auth.uid(). The RLS policies (auth.uid() = user_id) then return only
-//   this user's rows. That's why nothing below sends a user id: new rows
-//   get user_id = auth.uid() from the database itself.
+// Because the data is stored on a server, refreshing the browser no
+// longer resets anything: what you create is still there next time.
 //
-// The data functions kept the names and return shapes they had before
-// logins existed, so the pages didn't change.
+// Every function is `async` and returns a Promise, because the database
+// answers over the network. Each one is a call to Supabase's
+// auto-generated REST API, for example:
+//
+//   listTasks()   ->  GET  /rest/v1/tasks?select=*,tags(id,name)
+//   createTag()   ->  POST /rest/v1/tags
+//   createTask()  ->  POST /rest/v1/rpc/create_task_with_tags
+//
+// The names, arguments and return shapes did not change when we swapped
+// the old in-memory arrays for these calls, so the rest of the app
+// (context, pages, components) didn't have to change at all.
+//
+// Logging in is done here too, with Supabase Auth (see ACCOUNTS below).
+// Once someone is logged in, supabase-js sends their login token with
+// every request, and the database's row level security does the rest:
+//   * every list only contains the logged-in user's own rows
+//     (tags are the exception: they are shared by everyone)
+//   * new projects and tasks get user_id = the logged-in user
+//     automatically (the column default is auth.uid()), so we never send it
 // =====================================================================
 
 import { createClient } from '@supabase/supabase-js'
@@ -30,25 +38,21 @@ import { createClient } from '@supabase/supabase-js'
 // ---------- the connection ----------
 
 // The client is made the first time we need it (not when the file loads),
-// so a missing setting becomes a message the app can show
+// so a missing setting becomes an error the app can show in its banner
 // instead of a blank page.
 let client = null
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-
-// The message to show if the settings are missing, or null if they're there.
-export function configProblem() {
-  if (url && key) return null
-  return 'Supabase is not configured. Copy .env.example to .env in front-end/ and fill in VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY, then restart npm run dev.'
-}
-
 function supabase() {
   if (client) return client
-  if (configProblem()) throw new Error(configProblem())
 
-  // By default supabase-js saves the session (access + refresh token) in
-  // localStorage and refreshes the access token before it expires.
+  const url = import.meta.env.VITE_SUPABASE_URL
+  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  if (!url || !key) {
+    throw new Error(
+      'Supabase is not configured. Copy .env.example to .env.local and fill in VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.',
+    )
+  }
+
   client = createClient(url, key)
   return client
 }
@@ -64,53 +68,84 @@ function unwrap({ data, error }) {
 // ACCOUNTS
 // =====================================================================
 
-// Register. `name` travels as user metadata; the database trigger
-// (handle_new_user) copies it into public.users.
-// Returns the new session (null if the project still asks for email confirmation).
-export async function signUp({ name, email, password }) {
-  const data = unwrap(
-    await supabase().auth.signUp({ email, password, options: { data: { name } } }),
-  )
-  return data.session
+// Supabase Auth's error codes, in the app's own words. `field` says which
+// form field the message belongs under (none = shown above the button).
+const AUTH_MESSAGES = {
+  invalid_credentials: { message: 'Wrong email or password' },
+  user_already_exists: { message: 'An account with this email already exists', field: 'email' },
+  email_exists: { message: 'An account with this email already exists', field: 'email' },
+  weak_password: { message: 'Password must be at least 6 characters', field: 'password' },
 }
 
-// Log in with email + password. Returns the session.
-export async function signIn({ email, password }) {
-  const data = unwrap(await supabase().auth.signInWithPassword({ email, password }))
-  return data.session
+function authError(error) {
+  const known = AUTH_MESSAGES[error.code]
+  const err = new Error(known ? known.message : error.message)
+  err.field = known?.field
+  return err
 }
 
-// Log out: Supabase revokes the refresh token and supabase-js removes the
-// saved session from the browser.
-export async function signOut() {
-  unwrap(await supabase().auth.signOut())
+// The logged-in user's profile row from public.users: { id, name, email }.
+// The row is made by the database itself when someone signs up.
+async function getProfile(id) {
+  return unwrap(await supabase().from('users').select('id, name, email').eq('id', id).single())
 }
 
-// The saved session, if any (used after a browser refresh).
-export async function getSession() {
-  const data = unwrap(await supabase().auth.getSession())
-  return data.session
+// Make a new account. Email confirmation is off for this project, so the
+// new user is logged in straight away. `name` goes into the sign-up
+// metadata, where the database's sign-up trigger picks it up.
+// Returns the new user's profile.
+export async function register({ name, email, password }) {
+  const { data, error } = await supabase().auth.signUp({
+    email: email,
+    password: password,
+    options: { data: { name: name } },
+  })
+  if (error) throw authError(error)
+  return getProfile(data.user.id)
 }
 
-// Call `callback(session)` whenever someone logs in or out, or the token
-// is refreshed. Returns a function that stops listening.
-export function onAuthChange(callback) {
-  const { data } = supabase().auth.onAuthStateChange((_event, session) => callback(session))
-  return () => data.subscription.unsubscribe()
+// Log in with email and password. Returns the user's profile.
+export async function logIn({ email, password }) {
+  const { data, error } = await supabase().auth.signInWithPassword({
+    email: email,
+    password: password,
+  })
+  if (error) throw authError(error)
+  return getProfile(data.user.id)
 }
 
-// The logged-in user's row in public.users (their name for the header).
-export async function getProfile(id) {
-  return unwrap(
-    await supabase().from('users').select('id, name, email').eq('id', id).maybeSingle(),
-  )
+// Who is logged in, after a refresh or a return visit. supabase-js keeps the
+// login token in localStorage; we check it with Supabase (getUser asks the
+// server, so a deleted account or a forged token doesn't count) and return
+// that user's profile, or null if nobody is logged in.
+export async function getCurrentUser() {
+  const { data: saved } = await supabase().auth.getSession()
+  if (!saved.session) return null
+
+  const { data, error } = await supabase().auth.getUser()
+  if (error) {
+    // Supabase refused the token: forget it. (Any other error, like no
+    // network, keeps it so the next visit can try again.)
+    if (error.status === 401 || error.status === 403) {
+      await supabase().auth.signOut({ scope: 'local' })
+    }
+    return null
+  }
+  return getProfile(data.user.id)
+}
+
+// Log out on this device. supabase-js deletes the saved login token from
+// the browser (localStorage), so nothing that could log back in is left.
+// scope 'local' leaves the user's other devices logged in.
+export async function logOut() {
+  unwrap(await supabase().auth.signOut({ scope: 'local' }))
 }
 
 // =====================================================================
-// PROJECTS (RLS: only yours)
+// PROJECTS
 // =====================================================================
 
-// Your projects, oldest first.
+// The logged-in user's projects, oldest first.
 export async function listProjects() {
   return unwrap(
     await supabase()
@@ -120,7 +155,7 @@ export async function listProjects() {
   )
 }
 
-// Add a project. user_id is filled in by the database (auth.uid()).
+// Add a project (owned by the logged-in user). Returns the new row.
 export async function createProject({ name, description }) {
   return unwrap(
     await supabase()
@@ -132,16 +167,18 @@ export async function createProject({ name, description }) {
 }
 
 // Remove a project. Its tasks stay, but lose their project
-// (ON DELETE SET NULL in schema.sql).
+// (the database does this itself: ON DELETE SET NULL in schema.sql).
 export async function deleteProject(id) {
   unwrap(await supabase().from('projects').delete().eq('id', id))
 }
 
 // =====================================================================
-// TASKS (RLS: only yours)
+// TASKS
 // =====================================================================
 
-// Your tasks, newest first, each with its tags as a `tags` array.
+// The logged-in user's tasks, newest first. `tags(id, name)` asks Supabase to follow
+// task_tags and bring each task's tags along as a `tags` array
+// ([{ id, name }, ...]), sorted by name.
 export async function listTasks() {
   return unwrap(
     await supabase()
@@ -152,8 +189,10 @@ export async function listTasks() {
   )
 }
 
-// Add a task and link its tags in one go (a database function, so either
-// everything is saved or nothing is). The owner comes from the token.
+// Add a task (not complete yet) and link it to its tags. Returns the new row.
+// A plain insert can't write two tables at once, so we call a database
+// function (an RPC) that creates the task and its task_tags rows together:
+// either everything is saved, or nothing is.
 export async function createTask({ title, project_id, due_date, tagIds }) {
   return unwrap(
     await supabase().rpc('create_task_with_tags', {
@@ -170,16 +209,17 @@ export async function setTaskComplete(id, is_complete) {
   unwrap(await supabase().from('tasks').update({ is_complete: is_complete }).eq('id', id))
 }
 
-// Remove a task. Its task_tags rows go with it (ON DELETE CASCADE).
+// Remove a task. Its task_tags rows go with it
+// (the database does this itself: ON DELETE CASCADE in schema.sql).
 export async function deleteTask(id) {
   unwrap(await supabase().from('tasks').delete().eq('id', id))
 }
 
 // =====================================================================
-// TAGS (shared by every logged-in user)
+// TAGS
 // =====================================================================
 
-// All tags, A to Z.
+// All tags (shared by every user), A to Z (the tags table has no created_at to sort by).
 export async function listTags() {
   return unwrap(
     await supabase().from('tags').select('id, name').order('name', { ascending: true }),

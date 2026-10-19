@@ -13,6 +13,7 @@ if (redirected) history.replaceState(null, '', import.meta.env.BASE_URL.replace(
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter basename={import.meta.env.BASE_URL}>
+      {/* TaskProvider sits inside AuthProvider: it loads the logged-in user's data */}
       <AuthProvider>
         <TaskProvider>
           <App />

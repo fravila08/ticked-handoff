@@ -2,18 +2,18 @@ import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import AuthLayout from './components/AuthLayout'
 import RequireAuth from './components/RequireAuth'
-import Login from './pages/Login'
-import Register from './pages/Register'
 import Tasks from './pages/Tasks'
 import NewTask from './pages/NewTask'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
+import Register from './pages/Register'
+import Login from './pages/Login'
 import NotFound from './pages/NotFound'
 
 export default function App() {
   return (
     <Routes>
-      {/* Open to everyone: Log in and Register (logged-in users are sent to Tasks) */}
+      {/* Logged-out pages: just the app name and the form */}
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

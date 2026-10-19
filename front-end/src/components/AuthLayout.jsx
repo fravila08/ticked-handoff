@@ -1,27 +1,34 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
-import { TickedMark } from './Icons'
 import Loading from './Loading'
+import TopBar from './TopBar'
+import Toast from './Toast'
 
-// Frame for Log in and Register: just the brand and one card, no tab bar.
-// Already logged in? Go straight to Tasks.
+// Frame for the logged-out pages (Register, Log in): the app name, the form,
+// no tab bar. As soon as someone is logged in, it sends them on to the page
+// they were trying to open (or Tasks).
 export default function AuthLayout() {
-  const { user, checking, authError } = useAuth()
+  const { user, checking } = useAuth()
+  const location = useLocation()
 
-  if (!checking && user) return <Navigate to="/" replace />
+  // Still reading the saved login: don't flash the form at someone who's logged in.
+  if (checking) {
+    return (
+      <main className="page">
+        <Loading label="Checking who's logged in…" />
+      </main>
+    )
+  }
+  if (user) return <Navigate to={location.state?.from ?? '/'} replace />
 
   return (
-    <div className="auth-screen">
-      <main id="main" className="auth-main">
-        <p className="auth-brand">
-          <TickedMark />
-          <span className="brand-name">Ticked</span>
-        </p>
-        {authError && (
-          <p className="error-banner auth-config-error" role="alert">{authError}</p>
-        )}
-        {checking ? <Loading label="Checking who you are…" /> : <Outlet />}
+    <div className="app">
+      <a className="skip-link" href="#main">Skip to content</a>
+      <TopBar />
+      <main id="main" className="page page-auth">
+        <Outlet />
       </main>
+      <Toast />
     </div>
   )
 }

@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react'
 import * as db from '../data/db'
-import { useAuth } from './useAuth'
 import { TaskContext } from './useTasks'
+import { useAuth } from './useAuth'
 
-// The context holds a copy of the data for the pages to show.
+// The context holds a copy of the logged-in user's data for the pages to show.
 // It never touches the data directly: every read and write goes
 // through src/data/db.js, then we re-load so the screen matches.
 // (Components read it with the useTasks() hook from ./useTasks.js)
-//
-// Each user sees only their own projects and tasks (RLS in the database),
-// so we load when someone logs in and empty everything when they log out.
 
 // Ask db.js for all three lists at once.
 function loadEverything() {
@@ -19,41 +16,55 @@ function loadEverything() {
 export function TaskProvider({ children }) {
   const { user } = useAuth()
   const userId = user?.id
-  // The loaded rows, labelled with whose they are. If that's not the person
-  // logged in now (they just logged out, or someone else logged in), the
-  // pages get empty lists and "loading" instead of the old rows.
-  const [data, setData] = useState({ owner: null, projects: [], tasks: [], tags: [] })
-  const [loadFailed, setLoadFailed] = useState(false)
+  const [projects, setProjects] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [tags, setTags] = useState([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [toast, setToast] = useState(null)
   const [justAddedId, setJustAddedId] = useState(null) // the row that slides in
 
-  const isMine = Boolean(userId) && data.owner === userId
-  const projects = isMine ? data.projects : []
-  const tasks = isMine ? data.tasks : []
-  const tags = isMine ? data.tags : []
-  const loading = !isMine && !loadFailed
-
-  // Load (or re-load) everything from the data layer and put it on screen
-  // (or the error, if loading failed).
-  function load(owner) {
-    return loadEverything()
-      .then(([projectRows, taskRows, tagRows]) => {
-        setData({ owner, projects: projectRows, tasks: taskRows, tags: tagRows })
-        setLoadFailed(false)
-        setError(null)
-      })
-      .catch((err) => {
-        setLoadFailed(true)
-        setError(err.message || 'Could not load your tasks.')
-      })
+  // Put freshly loaded rows on screen (or the error, if loading failed).
+  function showData([projectRows, taskRows, tagRows]) {
+    setProjects(projectRows)
+    setTasks(taskRows)
+    setTags(tagRows)
+    setError(null)
+    setLoading(false)
   }
 
-  const refresh = () => load(userId)
+  function showLoadError(err) {
+    setError(err.message || 'Could not load your tasks.')
+    setLoading(false)
+  }
 
-  // Load when a user logs in (or a saved session is recovered after a refresh).
+  // Load (or re-load) everything from the data layer.
+  function refresh() {
+    return loadEverything().then(showData).catch(showLoadError)
+  }
+
+  // A different user (or nobody) is logged in: clear the old lists straight
+  // away, so one user's tasks never flash up for the next (or after logging out).
+  const [listsFor, setListsFor] = useState(userId)
+  if (listsFor !== userId) {
+    setListsFor(userId)
+    setProjects([])
+    setTasks([])
+    setTags([])
+    setError(null)
+    setLoading(true)
+  }
+
+  // ...then load the new user's data.
   useEffect(() => {
-    if (userId) load(userId)
+    if (!userId) return
+    let stale = false // a slow answer for the previous user is thrown away
+    loadEverything()
+      .then((rows) => !stale && showData(rows))
+      .catch((err) => !stale && showLoadError(err))
+    return () => {
+      stale = true
+    }
   }, [userId])
 
   // Run a change through db.js, then re-load. Returns the change's result,

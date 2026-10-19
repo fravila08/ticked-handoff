@@ -1,34 +1,47 @@
--- Ticked task manager: schema WITH authentication (Supabase Auth)
+-- Ticked task manager: schema from task-manager-erd.png (DrawSQL)
 --
--- Same five tables as before (users, projects, tags, tasks, task_tags),
--- rebuilt so every row knows who owns it:
+-- Written as the diagram shows it, plus these approved changes:
+--   * Login is Supabase Auth. public.users is the profile table for it:
+--     users.id IS the auth.users id, and deleting the login account deletes
+--     the profile (and, through it, the user's projects and tasks).
+--   * A trigger on auth.users (on_auth_user_created -> handle_new_user)
+--     creates the profile row at sign-up, taking the name from the sign-up
+--     metadata (options.data.name) or, if none, from the email. It is the
+--     ONLY object in this file outside the app's own tables and functions.
+--   * Email uniqueness is case-insensitive (unique index on lower(email)).
+--     Users can edit only their name; email is locked (column grant).
+--   * projects.user_id and tasks.user_id are not null, default auth.uid()
+--     and ON DELETE CASCADE. The app never sends a user id.
+--   * tasks.is_complete defaults to false.
+--   * Indexes on every foreign-key column.
+--   * Tags are global and shared (no user_id), as on the diagram. Any
+--     signed-in user can read and add them; nobody can edit or delete them.
+--   * RLS is on for every table, with per-user policies (section 6):
+--     everyone sees and changes only their own profile, projects, tasks and
+--     task_tags, and a task can only go in one of their own projects. The
+--     anon role (not signed in) gets no access to anything.
+--   * The project's rls_auto_enable() event-trigger function (it turns RLS
+--     on for new tables) is not part of this file and must never be dropped.
 --
---   auth.users  ── trigger ──►  public.users
---   (Supabase                        │ user_id (foreign key)
---    manages it)                     ▼
---                         public.projects, public.tasks
---                                    │
---                          RLS: auth.uid() = user_id
+-- History: the first version had no login. Its tables were dropped on
+-- 2026-10-19 (rows backed up to supabase/backups/, not re-imported because
+-- they belonged to a Demo User with no login), together with the temporary
+-- "dev: open access until auth" anon policies, and rebuilt from this file.
 --
--- What changed from the no-login version:
---   * public.users.id IS the auth.users id (no default of its own). A trigger
---     makes the public.users row the moment someone registers.
---   * projects.user_id and tasks.user_id are NOT NULL and default to
---     auth.uid(), so the app never sends a user id: the database takes it
---     from the logged-in user's access token (JWT).
---   * Deleting a user deletes their projects and tasks (on delete cascade).
---   * The "dev: open access until auth" policies are gone. Every policy is
---     "to authenticated": the publishable key on its own (anon) sees nothing.
---   * create_task_with_tags no longer takes p_user_id.
---   * Tags stay global and shared: any logged-in user can read and add them.
+-- Tables are in dependency order (a table comes after the tables it
+-- references), which is also the order they were created in Supabase:
+--   1. users  2. projects  3. tags  4. tasks  5. task_tags
+-- then 6. RLS policies and 7. create_task_with_tags.
 --
--- Run it on an EMPTY project: Supabase → SQL Editor → paste → Run.
--- Tables are in dependency order: users, projects, tags, tasks, task_tags.
+-- ON DELETE rules are not drawn on the diagram. The ones below follow the
+-- app's documented behaviour (CLAUDE.md): deleting a project keeps its tasks
+-- (project_id becomes null), deleting a task removes its task_tags rows.
+-- Deleting a user removes all their projects and tasks.
 
 
 -- 1. users ---------------------------------------------------------------
--- A mirror of auth.users. Supabase Auth owns the login (email + password);
--- this table holds what the app shows (the name).
+-- Story 1: an account with a name and email. One profile row per login
+-- account (auth.users).
 create table public.users (
   id          uuid         primary key references auth.users (id) on delete cascade,
   name        varchar(100) not null,
@@ -40,23 +53,9 @@ create unique index users_email_lower_key on public.users (lower(email));
 
 alter table public.users enable row level security;
 
-create policy "Users can view own profile" on public.users
-  for select to authenticated
-  using (auth.uid() = id);
-
-create policy "Users can update own profile" on public.users
-  for update to authenticated
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
-
--- No insert or delete policy: only the trigger below adds rows, and deleting
--- the auth.users row removes this one (on delete cascade).
-
-
--- 1b. the trigger: auth.users → public.users ------------------------------
--- Runs inside Supabase Auth's insert, so it needs security definer (it
--- writes to public.users as the function's owner, not as the new user).
--- The name comes from the Register form (signUp options.data.name).
+-- Creates the profile row when someone signs up.
+-- security definer: it runs as its owner, because the person signing up
+-- has no session yet and RLS would block the insert.
 create function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -67,12 +66,16 @@ begin
   insert into public.users (id, name, email)
   values (
     new.id,
-    left(coalesce(nullif(trim(new.raw_user_meta_data ->> 'name'), ''), split_part(new.email, '@', 1)), 100),
+    left(coalesce(nullif(trim(new.raw_user_meta_data ->> 'name'), ''),
+                  split_part(new.email, '@', 1)), 100),
     new.email
   );
   return new;
 end;
 $$;
+
+-- Only the trigger should run it, never the REST API.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -80,11 +83,13 @@ create trigger on_auth_user_created
 
 
 -- 2. projects ------------------------------------------------------------
+-- Story 2: projects with a name and an optional description.
 create table public.projects (
   id           uuid         primary key default gen_random_uuid(),
   name         varchar(255) not null,
   description  text,
-  user_id      uuid         not null default auth.uid() references public.users (id) on delete cascade,
+  user_id      uuid         not null default auth.uid()
+                            references public.users (id) on delete cascade,
   created_at   timestamptz  not null default now()
 );
 
@@ -92,21 +97,9 @@ create index projects_user_id_idx on public.projects (user_id);
 
 alter table public.projects enable row level security;
 
-create policy "Users can view own projects" on public.projects
-  for select to authenticated using (auth.uid() = user_id);
-
-create policy "Users can add own projects" on public.projects
-  for insert to authenticated with check (auth.uid() = user_id);
-
-create policy "Users can update own projects" on public.projects
-  for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users can delete own projects" on public.projects
-  for delete to authenticated using (auth.uid() = user_id);
-
 
 -- 3. tags ----------------------------------------------------------------
--- Shared by everyone (no user_id), as on the diagram.
+-- Story 7: labels like "school" or "urgent". Shared by everyone, no owner.
 create table public.tags (
   id    uuid        primary key default gen_random_uuid(),
   name  varchar(50) not null unique
@@ -114,21 +107,18 @@ create table public.tags (
 
 alter table public.tags enable row level security;
 
-create policy "Logged-in users can view tags" on public.tags
-  for select to authenticated using (true);
-
-create policy "Logged-in users can add tags" on public.tags
-  for insert to authenticated with check (true);
-
 
 -- 4. tasks ---------------------------------------------------------------
+-- Stories 3, 4, 5, 6, 8: title, optional project, optional due date,
+-- complete flag, created time.
 create table public.tasks (
   id           uuid         primary key default gen_random_uuid(),
   title        varchar(255) not null,
   is_complete  boolean      not null default false,
   due_date     date,
   project_id   uuid         references public.projects (id) on delete set null,
-  user_id      uuid         not null default auth.uid() references public.users (id) on delete cascade,
+  user_id      uuid         not null default auth.uid()
+                            references public.users (id) on delete cascade,
   created_at   timestamptz  not null default now()
 );
 
@@ -137,61 +127,133 @@ create index tasks_project_id_idx on public.tasks (project_id);
 
 alter table public.tasks enable row level security;
 
--- The curriculum's policy: users can only see their own tasks.
-create policy "Users can view own tasks" on public.tasks
-  for select to authenticated using (auth.uid() = user_id);
-
--- A new or changed task must be yours, and its project (if any) must be yours too.
-create policy "Users can add own tasks" on public.tasks
-  for insert to authenticated
-  with check (
-    auth.uid() = user_id
-    and (project_id is null or exists (
-      select 1 from public.projects p where p.id = project_id and p.user_id = auth.uid()))
-  );
-
-create policy "Users can update own tasks" on public.tasks
-  for update to authenticated
-  using (auth.uid() = user_id)
-  with check (
-    auth.uid() = user_id
-    and (project_id is null or exists (
-      select 1 from public.projects p where p.id = project_id and p.user_id = auth.uid()))
-  );
-
-create policy "Users can delete own tasks" on public.tasks
-  for delete to authenticated using (auth.uid() = user_id);
-
 
 -- 5. task_tags -----------------------------------------------------------
--- No user_id here: a pairing belongs to whoever owns its task.
+-- Story 7: many-to-many join, a task can have several tags.
 create table public.task_tags (
   task_id  uuid not null references public.tasks (id) on delete cascade,
   tag_id   uuid not null references public.tags (id)  on delete cascade,
   primary key (task_id, tag_id)
 );
 
+-- task_id is covered by the primary key; tag_id needs its own index.
 create index task_tags_tag_id_idx on public.task_tags (tag_id);
 
 alter table public.task_tags enable row level security;
 
-create policy "Users can view tags on own tasks" on public.task_tags
+
+-- 6. RLS policies --------------------------------------------------------
+-- Every policy is for the authenticated role only, so anon gets nothing.
+-- (select auth.uid()) is evaluated once per query, not once per row.
+-- ON DELETE actions (cascade / set null) are not subject to RLS.
+
+-- users: see and rename only yourself. Rows are created by the sign-up
+-- trigger and deleted with the login account, so no insert/delete policies.
+create policy "users: read own row" on public.users
   for select to authenticated
-  using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+  using (id = (select auth.uid()));
 
-create policy "Users can tag own tasks" on public.task_tags
+create policy "users: update own row" on public.users
+  for update to authenticated
+  using (id = (select auth.uid()))
+  with check (id = (select auth.uid()));
+
+-- Only the name can be edited; email, id and created_at are locked.
+revoke update on public.users from anon, authenticated;
+grant update (name) on public.users to authenticated;
+
+
+-- projects: full access to your own, nothing else.
+create policy "projects: read own" on public.projects
+  for select to authenticated
+  using (user_id = (select auth.uid()));
+
+create policy "projects: insert own" on public.projects
   for insert to authenticated
-  with check (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+  with check (user_id = (select auth.uid()));
 
-create policy "Users can untag own tasks" on public.task_tags
+create policy "projects: update own" on public.projects
+  for update to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
+create policy "projects: delete own" on public.projects
   for delete to authenticated
-  using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+  using (user_id = (select auth.uid()));
 
 
--- 6. API: create_task_with_tags ------------------------------------------
--- Save a task and its tags in one transaction. The owner is NOT a parameter:
--- tasks.user_id defaults to auth.uid(), the user in the request's token.
--- security invoker = it runs as the caller, so the RLS policies above apply.
+-- tags: shared. Any signed-in user can read and add; nobody edits or deletes.
+create policy "tags: read all" on public.tags
+  for select to authenticated
+  using (true);
+
+create policy "tags: add" on public.tags
+  for insert to authenticated
+  with check (true);
+
+
+-- tasks: your own only, and a task can only go in one of your own projects.
+create policy "tasks: read own" on public.tasks
+  for select to authenticated
+  using (user_id = (select auth.uid()));
+
+create policy "tasks: insert own" on public.tasks
+  for insert to authenticated
+  with check (
+    user_id = (select auth.uid())
+    and (project_id is null or exists (
+      select 1 from public.projects p
+      where p.id = project_id and p.user_id = (select auth.uid())
+    ))
+  );
+
+create policy "tasks: update own" on public.tasks
+  for update to authenticated
+  using (user_id = (select auth.uid()))
+  with check (
+    user_id = (select auth.uid())
+    and (project_id is null or exists (
+      select 1 from public.projects p
+      where p.id = project_id and p.user_id = (select auth.uid())
+    ))
+  );
+
+create policy "tasks: delete own" on public.tasks
+  for delete to authenticated
+  using (user_id = (select auth.uid()));
+
+
+-- task_tags: follow the task. You can see, add and remove tags only on your own tasks.
+create policy "task_tags: read own" on public.task_tags
+  for select to authenticated
+  using (exists (
+    select 1 from public.tasks t
+    where t.id = task_id and t.user_id = (select auth.uid())
+  ));
+
+create policy "task_tags: add to own task" on public.task_tags
+  for insert to authenticated
+  with check (exists (
+    select 1 from public.tasks t
+    where t.id = task_id and t.user_id = (select auth.uid())
+  ));
+
+create policy "task_tags: remove from own task" on public.task_tags
+  for delete to authenticated
+  using (exists (
+    select 1 from public.tasks t
+    where t.id = task_id and t.user_id = (select auth.uid())
+  ));
+
+
+-- 7. API: create_task_with_tags ------------------------------------------
+-- Stories 3 and 7: save a new task and its tags in one go. The app calls
+-- this as supabase.rpc('create_task_with_tags', {...}). It runs as one
+-- transaction, so either the task and all its tags are saved, or nothing is
+-- (for example, an unknown tag id leaves no half-made task behind).
+-- security invoker: it runs as the signed-in caller, so RLS applies
+-- (the task is theirs, its project must be theirs). user_id comes from
+-- the column default, auth.uid(). Duplicate and null tag ids are ignored.
 create function public.create_task_with_tags(
   p_title      text,
   p_project_id uuid   default null,
@@ -219,5 +281,7 @@ begin
 end;
 $$;
 
+-- Signed-in users only. Supabase grants new functions to anon by default,
+-- so anon has to be revoked by name as well as public.
 revoke execute on function public.create_task_with_tags(text, uuid, date, uuid[]) from public, anon;
 grant execute on function public.create_task_with_tags(text, uuid, date, uuid[]) to authenticated;
