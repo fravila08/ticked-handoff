@@ -4,7 +4,6 @@ description: Backend specialist responsible for Supabase database management, AP
 model: sonnet
 mcpServers:
   - supabase
-  - context7
 skills:
   - postgresql-table-design
 ---

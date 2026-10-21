@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import TopBar from './TopBar'
 import BottomNav from './BottomNav'
 import ErrorBanner from './ErrorBanner'
+import DonateButton from './DonateButton'
 import Toast from './Toast'
 
 // Shared frame for every page: header, error banner, the page itself (<Outlet/>),
@@ -24,6 +25,7 @@ export default function Layout() {
         <Outlet />
       </main>
       <Toast />
+      <DonateButton />
       <BottomNav />
     </div>
   )

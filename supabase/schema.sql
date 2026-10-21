@@ -20,6 +20,9 @@
 --     everyone sees and changes only their own profile, projects, tasks and
 --     task_tags, and a task can only go in one of their own projects. The
 --     anon role (not signed in) gets no access to anything.
+--   * donations (section 8): one-time Stripe donations. Rows are written only
+--     by Edge Functions with the service role (the stripe-webhook function);
+--     signed-in users can only read their own. user_id references auth.users.
 --   * The project's rls_auto_enable() event-trigger function (it turns RLS
 --     on for new tables) is not part of this file and must never be dropped.
 --
@@ -31,7 +34,7 @@
 -- Tables are in dependency order (a table comes after the tables it
 -- references), which is also the order they were created in Supabase:
 --   1. users  2. projects  3. tags  4. tasks  5. task_tags
--- then 6. RLS policies and 7. create_task_with_tags.
+-- then 6. RLS policies, 7. create_task_with_tags and 8. donations.
 --
 -- ON DELETE rules are not drawn on the diagram. The ones below follow the
 -- app's documented behaviour (CLAUDE.md): deleting a project keeps its tasks
@@ -285,3 +288,31 @@ $$;
 -- so anon has to be revoked by name as well as public.
 revoke execute on function public.create_task_with_tags(text, uuid, date, uuid[]) from public, anon;
 grant execute on function public.create_task_with_tags(text, uuid, date, uuid[]) to authenticated;
+
+
+-- 8. donations -----------------------------------------------------------
+-- One-time Stripe donations. amount is in cents ($10.00 = 1000).
+-- stripe_payment_intent_id is unique: the webhook uses it for idempotency.
+-- Rows are inserted by the stripe-webhook Edge Function (service role,
+-- which bypasses RLS). Users can only read their own; the API gets no
+-- insert/update/delete for anon or authenticated.
+create table public.donations (
+  id                        uuid        primary key default gen_random_uuid(),
+  user_id                   uuid        not null references auth.users (id) on delete cascade,
+  amount                    integer     not null check (amount > 0),
+  stripe_payment_intent_id  text        not null unique,
+  status                    text        not null check (status in ('succeeded', 'failed')),
+  created_at                timestamptz not null default now()
+);
+
+create index donations_user_id_idx on public.donations (user_id);
+
+alter table public.donations enable row level security;
+
+create policy "donations: read own" on public.donations
+  for select to authenticated
+  using (user_id = (select auth.uid()));
+
+revoke all on public.donations from anon, authenticated;
+grant select on public.donations to authenticated;
+grant all on public.donations to service_role;

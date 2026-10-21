@@ -3,9 +3,7 @@ name: front-end-agent
 description: Builds, maintains, and tests React Single Page Applications with responsive, accessible UI/UX.
 model: sonnet
 mcpServers:
-  - context7
   - playwright
-  - chrome-devtools
 skills:
   - frontend-design
   - ui-ux-pro-max

@@ -230,3 +230,31 @@ export async function listTags() {
 export async function createTag(name) {
   return unwrap(await supabase().from('tags').insert({ name: name }).select('id, name').single())
 }
+
+// =====================================================================
+// DONATIONS
+// =====================================================================
+
+// Ask the `process-donation` Edge Function for a Stripe PaymentIntent.
+// `amount` is whole cents (1 to 1,000,000). The function takes the user from
+// the login, so no user id is sent. Returns the intent's `client_secret`,
+// which Stripe.js uses to take the card payment in the browser.
+// Throws an Error; `err.network` is true when the function couldn't be reached
+// at all (as opposed to it answering with a rejection).
+export async function createDonationIntent(amount) {
+  const { data, error } = await supabase().functions.invoke('process-donation', {
+    body: { amount: amount },
+  })
+  if (error) {
+    const unreachable = error.name === 'FunctionsFetchError' || error.name === 'FunctionsRelayError'
+    const err = new Error(
+      unreachable ? 'Could not reach the donation service.' : 'The donation could not be started.',
+    )
+    err.network = unreachable
+    throw err
+  }
+  if (!data?.client_secret) {
+    throw new Error('The donation could not be started.')
+  }
+  return data.client_secret
+}

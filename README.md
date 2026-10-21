@@ -1,11 +1,12 @@
 # Ticked: full-stack task manager with logins
 
-Ticked is the running example app for Code Platoon Phase III. It's a React + Vite task manager (tasks, projects, tags, due dates) on Supabase, with **Supabase Auth** logins. Each person sees only their own projects and tasks, and the database enforces that with Row Level Security.
+Ticked is the running example app for Code Platoon Phase III. It's a React + Vite task manager (tasks, projects, tags, due dates) on Supabase, with **Supabase Auth** logins. Each person sees only their own projects and tasks, and the database enforces that with Row Level Security. Logged-in users can also make a one-time **Stripe** donation (test mode) from a coffee-mug button, handled by two Supabase Edge Functions.
 
 This is **the class's own Ticked**, exactly where the class left off **at the end of 09-Building-Applications / 4-authentication**: Claude built it live in the lectures, with the students approving each step. It's ready for **10-Beyond-Building**. (Added at handoff: `supabase-agent`, `vercel.json`, a root `.gitignore`, and this README.)
 
 - [Run it](#run-it)
 - [How it fits together](#how-it-fits-together)
+- [Donations (Stripe)](#donations-stripe)
 - [Set up Claude Code like the class demo](#set-up-claude-code-like-the-class-demo)
 - [Handoff notes for the next instructor](#handoff-notes-for-the-next-instructor)
 
@@ -15,7 +16,7 @@ This is **the class's own Ticked**, exactly where the class left off **at the en
 
 You need Node 20+, a free Supabase project, and about 10 minutes.
 
-1. **Database:** Supabase → **SQL Editor** → paste [`supabase/schema.sql`](supabase/schema.sql) → **Run**. It needs an empty project. It makes the 5 tables, the trigger, the RLS policies and one function.
+1. **Database:** Supabase → **SQL Editor** → paste [`supabase/schema.sql`](supabase/schema.sql) → **Run**. It needs an empty project. It makes the 6 tables (including `donations`), the trigger, the RLS policies and one function.
 2. **Email confirmation (for class):** **Authentication → Sign In / Providers → Email** → turn **Confirm email** off → Save.
    - With it on, new accounts can't log in until they click an emailed link. Playwright can't open an inbox, and Supabase's built-in email sender only allows a few emails an hour.
    - Real apps keep it on.
@@ -26,6 +27,7 @@ You need Node 20+, a free Supabase project, and about 10 minutes.
    ```
    - Fill in `VITE_SUPABASE_URL`: Integrations → Data API → Project URL, **without** `/rest/v1/` and with no trailing slash.
    - Fill in `VITE_SUPABASE_PUBLISHABLE_KEY`: Project Settings → API Keys → publishable key.
+   - Optional, for donations: fill in `VITE_STRIPE_PUBLISHABLE_KEY` with your Stripe **test** publishable key (`pk_test_...`). It's safe in the browser. Never put a secret key (`sk_...`) anywhere in `front-end/`.
    - `.env.local` is gitignored (`*.local` in `front-end/.gitignore`). Never commit it.
 4. **Start it:**
    ```bash
@@ -33,6 +35,7 @@ You need Node 20+, a free Supabase project, and about 10 minutes.
    npm run dev        # http://localhost:5173
    ```
    Register an account, add a task, and refresh: you're still logged in. Open a private window and register a second account: it sees none of the first account's tasks.
+5. **Donations (optional):** the Edge Functions and secrets are set up once per Supabase project. See [Donations (Stripe)](#donations-stripe). Without them the rest of the app works normally; only the Donate page fails.
 
 **Claude Code:** to get the same MCP servers, skills and sub-agents the class used, follow [Set up Claude Code like the class demo](#set-up-claude-code-like-the-class-demo).
 
@@ -49,19 +52,25 @@ ticked/
 ├── front-end/       the React app (= the curriculum's "client/")
 │   ├── app_outline/ user journey, style guide, a wireframe and user story per page
 │   ├── src/
-│   │   ├── data/db.js            ← the ONLY file that talks to Supabase (logins too)
+│   │   ├── data/db.js            ← the ONLY file that talks to Supabase (logins, Edge Functions too)
+│   │   ├── data/pokeapi.js       ← the one place that talks to PokeAPI (Projects page badge)
 │   │   ├── context/AuthContext   ← who is logged in: useAuth()
 │   │   ├── context/TaskContext   ← their data: useTasks()
-│   │   ├── components/           RequireAuth, AuthLayout, FormField, TopBar (name + Log out) …
-│   │   ├── pages/                Login, Register, Tasks, NewTask, Projects, ProjectDetail, NotFound
+│   │   ├── components/           RequireAuth, AuthLayout, FormField, TopBar (name + Log out), DonateButton …
+│   │   ├── pages/                Login, Register, Tasks, NewTask, Projects, ProjectDetail, Donate, NotFound
 │   │   └── utils/                dates, task sorting, tag colours
-│   ├── screenshots/              the four main pages
+│   ├── screenshots/              the main pages + the donation flow
+│   ├── README.md                 ← the front end: routes, state, data layer, env vars
 │   ├── .env.example              copy to .env.local
 │   └── vercel.json               SPA rewrite for Vercel (added at handoff)
 ├── supabase/
+│   ├── README.md                 ← the state of the Supabase project (incl. Edge Functions)
 │   ├── schema.sql                ← the source of truth for the database
+│   ├── functions/                process-donation, stripe-webhook (Edge Function source)
+│   ├── DONATION_REVIEW.md        the supervisor's review of the donation feature
 │   ├── user_stories.md
 │   └── task-manager-erd.png      (the original design, before logins)
+├── obsidian-canvas/              ticked-app-map.canvas: the app and its data flows (open in Obsidian)
 ├── CLAUDE.md                     ← read this second
 └── .gitignore                    (.env, .env.local, .mcp.json, node_modules, dist)
 ```
@@ -89,6 +98,7 @@ Ticked ──► db.js ──► GET /rest/v1/tasks
 | Projects | `listProjects`, `createProject`, `deleteProject` |
 | Tasks | `listTasks` (with their tags), `createTask` (the `create_task_with_tags` RPC), `setTaskComplete`, `deleteTask` |
 | Tags | `listTags`, `createTag` |
+| Donations | `createDonationIntent(amount)`: calls the `process-donation` Edge Function with `supabase.functions.invoke` (sends the user's JWT, never a user id) and returns the Stripe `client_secret` |
 
 Supabase Auth errors come back in the app's own words ("Wrong email or password", "An account with this email already exists"), with `err.field` saying which input they belong under.
 
@@ -99,6 +109,9 @@ auth.users ──trigger──► public.users (id, name, email)
                               │ user_id  (default auth.uid(), on delete cascade)
                     ┌─────────┴─────────┐
               public.projects ◄── public.tasks ──► task_tags ◄── tags (shared)
+
+auth.users ──► public.donations (user_id, amount in cents, stripe_payment_intent_id, status)
+               users can only read their own; only the stripe-webhook function writes
 ```
 
 | Request | What comes back |
@@ -109,6 +122,36 @@ auth.users ──trigger──► public.users (id, name, email)
 | Logged in, PATCH or DELETE someone else's row | **204**, but nothing changes (RLS hides the row) |
 | Logged in, a task in someone else's project | **403** (the task policies check the project's owner too) |
 | Logged in, changing your own email in `users` | **403**: only `name` is editable (a column grant) |
+
+---
+
+## Donations (Stripe)
+
+A coffee-mug button (bottom-right, every logged-in page) opens `/donate`. The user picks $5, $10, $25, $50 or their own amount (up to $10,000), types a card, and Stripe.js takes the payment. **Test mode only**: use card `4242 4242 4242 4242` (any future expiry, any CVC) to succeed and `4000 0000 0000 0002` to be declined.
+
+```
+Donate page ──► db.js createDonationIntent(cents)
+                  └─► Edge Function process-donation   (verify_jwt true; user from the JWT)
+                        └─► Stripe: create PaymentIntent (STRIPE_SECRET_KEY) ──► { client_secret }
+Donate page ──► stripe.confirmCardPayment(client_secret)  ──► Stripe (card never touches our servers)
+Stripe ──► Edge Function stripe-webhook   (verify_jwt false; signature checked)
+             └─► public.donations: insert once per PaymentIntent (service role)
+```
+
+- **The browser never writes `donations`.** Only the webhook does, after checking Stripe's signature. Users can only read their own rows (RLS).
+- **The user id is never sent from the front end.** `process-donation` reads it from the login and stores it in the PaymentIntent's metadata, which the webhook reads back.
+- **Messages:** success shows "Thank you for your $X.XX donation"; a declined card shows a plain message (no Stripe codes); an unreachable function shows "Something went wrong" with a Retry button.
+
+**One-time setup per Supabase project** (details in [`supabase/README.md`](supabase/README.md#donations-stripe)):
+
+1. Deploy `supabase/functions/process-donation` (JWT on) and `supabase/functions/stripe-webhook` (JWT **off**, since Stripe has no Supabase login). With the Supabase MCP: `deploy_edge_function`.
+2. Set two Edge Function secrets: `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. They live only in Supabase, never in the repo or the browser.
+3. In the Stripe dashboard (test mode) add a webhook destination at `https://<project-ref>.supabase.co/functions/v1/stripe-webhook` for `payment_intent.succeeded` and `payment_intent.payment_failed`. Thin and snapshot payloads both work. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+4. Put the test publishable key in `front-end/.env.local` as `VITE_STRIPE_PUBLISHABLE_KEY`.
+
+To check it: make a test payment, then look in `public.donations` for the row (status `succeeded`). If it's missing, read the `stripe-webhook` logs: every delivery logs the event type and what the function did with it.
+
+The whole app, page by page, with its data flows, is drawn in [`obsidian-canvas/ticked-app-map.canvas`](obsidian-canvas/ticked-app-map.canvas) (open the folder as an Obsidian vault).
 
 ---
 
@@ -255,15 +298,15 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 | "Your existing Axios instance" (Stripe prompt) | **No Axios.** All calls go through `front-end/src/data/db.js` with supabase-js | Either: "Call Edge Functions with `supabase.functions.invoke()` inside db.js" (it sends the user's JWT for you), or `npm install axios` first and have Claude add one instance in db.js. |
 | "Your existing auth context" | `useAuth()` from `src/context/useAuth.js`: `user` (the profile `{ id, name, email }`, or `null`), `checking`, `register`, `logIn`, `logOut`. It does **not** expose the session or token | Need the token (e.g. for an Edge Function)? Keep it in db.js: `supabase.functions.invoke()` sends it automatically, or read it with `supabase.auth.getSession()` there. |
 | React Router setup | React Router 7. Routes are in `src/App.jsx` | Put `/donate` **inside** `<RequireAuth>` so only logged-in users see it. |
-| Supabase CLI "installed, authenticated, and linked" | Not set up yet: `supabase/` only has `schema.sql` | From the repo root: `npx supabase login`, then `npx supabase init` (adds `supabase/config.toml` next to `schema.sql`), then `npx supabase link --project-ref <ref>`. Functions go in `supabase/functions/`. |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY`, `VITE_STRIPE_PUBLIC_KEY` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` in `front-end/.env.local` | Keep Ticked's names; add `VITE_STRIPE_PUBLIC_KEY` to `front-end/.env.local` and to Vercel. |
-| A root `.env` for `DOG_API_KEY` (server secrets) | `front-end/.env.local` for the browser; the root `.gitignore` already covers a root `.env` and `.mcp.json` | Check `git status` before every commit anyway. Deployed functions read secrets from `npx supabase secrets set`. |
+| Supabase CLI "installed, authenticated, and linked" | Not set up yet: `supabase/` has no `config.toml`. Three practice Edge Functions (`hello-world`, `multiply-numbers`, `dog-picture`) were deployed through the Supabase MCP, so their source is only in the project (see [`supabase/README.md`](supabase/README.md)) | From the repo root: `npx supabase login`, then `npx supabase init` (adds `supabase/config.toml` next to `schema.sql`), then `npx supabase link --project-ref <ref>`. Functions go in `supabase/functions/`. Ticked's two donation functions already live there (`process-donation`, `stripe-webhook`). |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY`, `VITE_STRIPE_PUBLIC_KEY` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` in `front-end/.env.local` | Keep Ticked's names. Ticked's Stripe key is `VITE_STRIPE_PUBLISHABLE_KEY` (in `front-end/.env.local` and in Vercel). |
+| A root `.env` for `DOG_API_KEY` (server secrets) | `front-end/.env.local` for the browser; the root `.gitignore` already covers a root `.env` and `.mcp.json` | Check `git status` before every commit anyway. Deployed functions read secrets from `npx supabase secrets set`. `DOG_API_KEY` is already set as an Edge Function secret, and `dog-picture` uses it. |
 | `donations.user_id` → `auth.users` | Ticked's tables point to `public.users` (same ids) | Either works. Follow the tasks table to stay consistent. |
 | `main` / `dev` / `feature/*` branches | Only `main` | Create `dev` at the start of the DevOps lesson. |
 
 **Things to tell Claude during the Stripe and deploy lessons:**
-- **`stripe-webhook`** is called by Stripe, which has no Supabase login. Deploy it with `--no-verify-jwt`, or Stripe gets 401.
-- **`process-donation`** should take the user from the request's JWT, not from a `user_id` in the body. That's the same idea as Ticked's `default auth.uid()`.
+- **`stripe-webhook`** is called by Stripe, which has no Supabase login. Deploy it with `--no-verify-jwt`, or Stripe gets 401. Ticked's is deployed with `verify_jwt` false, checks Stripe's signature, and handles both thin and snapshot payloads.
+- **`process-donation`** should take the user from the request's JWT, not from a `user_id` in the body. That's the same idea as Ticked's `default auth.uid()`, and it is how Ticked's `process-donation` works (the request body is just `{ "amount": cents }`).
 - **Vercel deep links:** `front-end/vercel.json` already rewrites every path to `index.html`, so refreshing `/projects` works. Build with the default `BASE` (`/`). The `BASE=/sub/path/` variable and `main.jsx`'s `?p=` redirect are only for GitHub Pages.
 - **After the first Vercel deploy:** Supabase → **Authentication → URL Configuration**. Set the **Site URL** to the Vercel URL, and add it, plus `http://localhost:5173`, to **Redirect URLs**.
 - **Schema changes:** run new SQL in the SQL Editor, or as files in `supabase/migrations/` with `npx supabase db push`. Copy the change into `supabase/schema.sql` too, so it stays the source of truth.
@@ -293,3 +336,5 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
   - `rls_auto_enable()` "can be called by anon/authenticated". It's Supabase's own function: it turns RLS on for every new table. **Don't drop it.** To silence the warning, ask Claude to `revoke execute on function rls_auto_enable() from anon, authenticated` (the function keeps working).
   - "Leaked password protection is off": an Auth setting. Optional.
 - **Test accounts:** Playwright made throwaway accounts and deleted them. The class registered real ones (e.g. maria@ / sam@ticked.app) by hand. Delete leftovers in Authentication → Users; deleting an account deletes its rows too (cascade).
+- **Stripe test data:** the donation checks made real Stripe **test-mode** payments and a few throwaway accounts (emails like `donate…@example.com`). Delete the accounts in Authentication → Users; their `donations` rows go with them (cascade).
+- **Thin webhook payloads:** the Stripe webhook destination here sends thin events (`v1.payment_intent.succeeded`, no data). `stripe-webhook` fetches the PaymentIntent from Stripe to get the amount and user, so it needs `STRIPE_SECRET_KEY` as well as `STRIPE_WEBHOOK_SECRET`.

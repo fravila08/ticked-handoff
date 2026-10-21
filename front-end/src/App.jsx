@@ -8,6 +8,7 @@ import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Register from './pages/Register'
 import Login from './pages/Login'
+import Donate from './pages/Donate'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/tasks/new" element={<NewTask />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
+          <Route path="/donate" element={<Donate />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

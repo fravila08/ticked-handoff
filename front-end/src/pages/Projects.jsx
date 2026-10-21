@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTasks } from '../context/useTasks'
 import { projectProgress } from '../utils/tasks'
 import Loading from '../components/Loading'
+import PokemonBadge from '../components/PokemonBadge'
 import ProgressBar from '../components/ProgressBar'
 import { AlertIcon, ChevronRightIcon } from '../components/Icons'
 
@@ -33,7 +34,10 @@ export default function Projects() {
   return (
     <>
       <header className="page-head">
-        <h1 className="page-title">Projects</h1>
+        <div className="page-title-row">
+          <h1 className="page-title">Projects</h1>
+          <PokemonBadge />
+        </div>
       </header>
 
       {loading ? (
