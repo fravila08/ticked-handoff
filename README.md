@@ -338,3 +338,5 @@ Lessons taught so far (all with Claude Code doing the typing and students approv
 - **Test accounts:** Playwright made throwaway accounts and deleted them. The class registered real ones (e.g. maria@ / sam@ticked.app) by hand. Delete leftovers in Authentication → Users; deleting an account deletes its rows too (cascade).
 - **Stripe test data:** the donation checks made real Stripe **test-mode** payments and a few throwaway accounts (emails like `donate…@example.com`). Delete the accounts in Authentication → Users; their `donations` rows go with them (cascade).
 - **Thin webhook payloads:** the Stripe webhook destination here sends thin events (`v1.payment_intent.succeeded`, no data). `stripe-webhook` fetches the PaymentIntent from Stripe to get the amount and user, so it needs `STRIPE_SECRET_KEY` as well as `STRIPE_WEBHOOK_SECRET`.
+
+TRIAL
