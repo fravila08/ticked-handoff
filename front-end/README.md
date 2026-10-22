@@ -55,6 +55,7 @@ src/
 │   └── pokeapi.js      the only place that talks to PokeAPI
 ├── context/
 │   ├── AuthContext.jsx   user, checking, register, logIn, logOut      → useAuth()
+│   ├── ThemeContext.jsx  theme, toggleTheme                          → useTheme()
 │   └── TaskContext.jsx   projects, tasks, tags, loading, error, toasts, actions → useTasks()
 ├── pages/              one file per route
 ├── components/         TopBar, BottomNav, Layout, AuthLayout, RequireAuth, FormField, TaskRow, TaskList,
@@ -79,6 +80,7 @@ Column names match the database: `id`, `created_at`, `is_complete`, `due_date` (
 ### State
 
 - **`AuthContext`** holds `user` (the profile or null), `checking` (true while the saved login is read on startup; `RequireAuth` and `AuthLayout` show "Checking who's logged in…" instead of redirecting), and `register`, `logIn`, `logOut`. Read it with `useAuth()`.
+- **`ThemeContext`** (outermost provider) holds `theme` (`'light'` | `'dark'`, default light) and `toggleTheme`. The choice is saved in `localStorage` (`ticked-theme`, guarded by try/catch); an inline script in `index.html` applies it before first paint. Dark mode is a `:root[data-theme='dark']` token override in `index.css`. `ThemeToggle` (in `TopBar`, every page) switches it. Read it with `useTheme()`.
 - **`TaskContext`** (inside `AuthProvider`) loads projects, tasks and tags through `db.js` whenever the logged-in user changes, clearing the old lists first so one user's data never shows for the next. Every change goes through `db.js` and then re-loads. Read it with `useTasks()`.
 - `Donate` is the exception: it calls `createDonationIntent` directly and keeps its own form state, because donations aren't part of the task data.
 

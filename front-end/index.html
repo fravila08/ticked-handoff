@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f4f5ef" />
+    <script>
+      // Apply the saved theme before first paint (no flash). Light is the default.
+      try {
+        if (localStorage.getItem('ticked-theme') === 'dark') {
+          document.documentElement.dataset.theme = 'dark'
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f1a30')
+        }
+      } catch (e) {}
+    </script>
     <title>Ticked</title>
     <!-- Fonts: Fredoka (rounded display, headings + app name), Public Sans (body, tabular dates) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

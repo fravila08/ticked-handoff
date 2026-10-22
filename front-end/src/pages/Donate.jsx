@@ -3,6 +3,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { createDonationIntent } from '../data/db'
 import { AlertIcon } from '../components/Icons'
+import { useTheme } from '../context/useTheme'
 
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
 const stripePromise = stripeKey ? loadStripe(stripeKey) : null
@@ -10,16 +11,27 @@ const stripePromise = stripeKey ? loadStripe(stripeKey) : null
 const PRESETS = [5, 10, 25, 50]
 const MAX_DOLLARS = 10000
 
-const CARD_STYLE = {
-  style: {
-    base: {
-      fontSize: '16px',
-      color: '#1c2b4a',
-      fontFamily: 'Public Sans, system-ui, sans-serif',
-      '::placeholder': { color: '#7a8292' },
+// Stripe draws the card field in its own iframe, so it can't read our CSS
+// variables: pass it the colors for the current theme.
+const CARD_COLORS = {
+  light: { text: '#1c2b4a', hint: '#7a8292', invalid: '#b42318' },
+  dark: { text: '#e6ebf5', hint: '#8f9bb4', invalid: '#ff9a8f' },
+}
+
+function cardStyle(theme) {
+  const c = CARD_COLORS[theme]
+  return {
+    style: {
+      base: {
+        fontSize: '16px',
+        color: c.text,
+        iconColor: c.text,
+        fontFamily: 'Public Sans, system-ui, sans-serif',
+        '::placeholder': { color: c.hint },
+      },
+      invalid: { color: c.invalid, iconColor: c.invalid },
     },
-    invalid: { color: '#b42318' },
-  },
+  }
 }
 
 // "12.5" -> 1250 cents, or an error message. Positive, at most $10,000, at most 2 decimals.
@@ -38,6 +50,7 @@ function parseDollars(text) {
 const money = (cents) => `$${(cents / 100).toFixed(2)}`
 
 function DonateForm() {
+  const { theme } = useTheme()
   const stripe = useStripe()
   const elements = useElements()
   const [preset, setPreset] = useState('10') // a preset in dollars, or 'custom'
@@ -160,7 +173,7 @@ function DonateForm() {
       <div className="field">
         <span id="donate-card-label" className="label">Card details</span>
         <div className="donate-card" aria-labelledby="donate-card-label">
-          <CardElement options={CARD_STYLE} />
+          <CardElement options={cardStyle(theme)} />
         </div>
       </div>
 

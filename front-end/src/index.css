@@ -17,6 +17,15 @@
   --accent-press: #b5e34f;
   --error: #b42318;      /* overdue + errors: a red, clearly not the lime */
   --error-bg: #fcebe8;
+  --on-accent: #1c2b4a;  /* text/tick drawn on top of the lime accent (stays dark in both themes) */
+  --on-error: #fff;
+  --error-press: #96190f;
+  --field: #fff;         /* text inputs + card field */
+  --field-edge: #b9bfc9; /* input borders */
+  --field-hint: #7a8292; /* placeholders */
+  --field-invalid-bg: #fffafa;
+  --dash: #c3c8cf;       /* dashed empty-state border */
+  --scrim: rgb(28 43 74 / 0.4);
 
   /* soft, muted tag colors: background + text */
   --sky-bg: #e3eaf6;   --sky-ink: #2d4a7a;
@@ -25,6 +34,8 @@
   --lilac-bg: #ece6f4; --lilac-ink: #55437c;
   --sand-bg: #f2ead3;  --sand-ink: #66531c;
   --teal-bg: #dcefec;  --teal-ink: #27605b;
+
+  color-scheme: light;
 
   --display: 'Fredoka', 'Varela Round', system-ui, sans-serif;
   --body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -45,6 +56,37 @@
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --paper: #0f1a30;      /* deep navy "ink paper" */
+  --sheet: #17233d;
+  --dot: #26334f;
+  --rule: #2c3a58;
+  --ink: #e6ebf5;
+  --ink-2: #b4bdd0;
+  --ink-3: #98a3ba;
+  --accent: #c8f169;     /* same highlighter lime */
+  --accent-press: #b5e34f;
+  --error: #ff9a8f;
+  --error-bg: #3a1c24;
+  --on-error: #2a0d0a;
+  --error-press: #ffb4ab;
+  --field: #0f1a30;
+  --field-edge: #5b6a8c;
+  --field-hint: #8f9bb4;
+  --field-invalid-bg: #2a1a24;
+  --dash: #3e4d6e;
+  --scrim: rgb(5 9 20 / 0.65);
+
+  --sky-bg: #1f3358;   --sky-ink: #a9c4f2;
+  --clay-bg: #44291f;  --clay-ink: #f0b99f;
+  --sage-bg: #25391f;  --sage-ink: #b4d6a8;
+  --lilac-bg: #342a52; --lilac-ink: #cdbdf2;
+  --sand-bg: #3f3516;  --sand-ink: #e6d092;
+  --teal-bg: #17403c;  --teal-ink: #9fdad2;
 }
 
 *,
@@ -139,6 +181,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   max-width: 560px;
   margin: 0 auto;
   padding: 14px 20px 0;
@@ -185,6 +228,16 @@ button {
 .account .btn {
   flex: none;
   white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .account {
+    gap: 8px;
+  }
+
+  .account-name {
+    max-width: 8ch;
+  }
 }
 
 .page {
@@ -397,6 +450,7 @@ button {
 
 .btn-primary {
   background: var(--accent);
+  color: var(--on-accent);
   box-shadow: 0 2px 0 var(--ink);
 }
 
@@ -420,11 +474,11 @@ button {
 .btn-danger {
   border-color: var(--error);
   background: var(--error);
-  color: #fff;
+  color: var(--on-error);
 }
 
 .btn-danger:hover {
-  background: #96190f;
+  background: var(--error-press);
 }
 
 .btn-danger-text {
@@ -562,15 +616,15 @@ button {
   width: 100%;
   min-height: 48px;
   padding: 10px 14px;
-  border: 1.5px solid #b9bfc9;
+  border: 1.5px solid var(--field-edge);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--field);
   font-size: 1rem;
   transition: border-color 120ms ease-out;
 }
 
 .input::placeholder {
-  color: #7a8292;
+  color: var(--field-hint);
 }
 
 .input:hover,
@@ -611,7 +665,7 @@ button {
 .input[aria-invalid='true'] {
   border-color: var(--error);
   border-width: 2px;
-  background: #fffafa;
+  background: var(--field-invalid-bg);
 }
 
 /* ---------- forms ---------- */
@@ -925,7 +979,7 @@ legend.label {
 /* the tick: drawn with a dash that shrinks to nothing */
 .check-mark {
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--on-accent);
   stroke-width: 2.8;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -1052,7 +1106,7 @@ legend.label {
   padding: 32px 20px;
   text-align: center;
   background: var(--sheet);
-  border: 1.5px dashed #c3c8cf;
+  border: 1.5px dashed var(--dash);
   border-radius: var(--radius);
 }
 
@@ -1140,7 +1194,7 @@ legend.label {
   border-radius: 6px;
   background: var(--accent);
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--on-accent);
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -1169,7 +1223,7 @@ legend.label {
 }
 
 .dialog::backdrop {
-  background: rgb(28 43 74 / 0.4);
+  background: var(--scrim);
 }
 
 @keyframes dialog-in {
@@ -1288,6 +1342,7 @@ legend.label {
 
 .donate-fab:hover {
   background: var(--accent);
+  color: var(--on-accent);
 }
 
 .donate-fab:active {
@@ -1367,6 +1422,7 @@ legend.label {
 .donate-option input:checked + span {
   border-color: var(--ink);
   background: var(--accent);
+  color: var(--on-accent);
   box-shadow: 0 2px 0 var(--ink);
 }
 
@@ -1377,9 +1433,9 @@ legend.label {
 
 .donate-card {
   padding: 14px;
-  border: 1.5px solid #b9bfc9;
+  border: 1.5px solid var(--field-edge);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--field);
 }
 
 .donate-card:focus-within {
@@ -1402,4 +1458,41 @@ legend.label {
   font-weight: 600;
   font-size: 1.5rem;
   line-height: 1.2;
+}
+
+/* ---------- theme toggle ---------- */
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1.5px solid var(--rule);
+  border-radius: 12px;
+  background: var(--sheet);
+  color: var(--ink);
+  transition: border-color 120ms ease-out, background-color 120ms ease-out;
+}
+
+.theme-toggle:hover {
+  border-color: var(--ink);
+}
+
+.theme-toggle svg {
+  animation: theme-icon-in 200ms var(--ease-out);
+}
+
+@keyframes theme-icon-in {
+  from {
+    opacity: 0;
+    transform: rotate(-40deg) scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle svg {
+    animation: none;
+  }
 }

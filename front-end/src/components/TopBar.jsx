@@ -3,6 +3,7 @@ import { useAuth } from '../context/useAuth'
 import { useTasks } from '../context/useTasks'
 import { TickedMark } from './Icons'
 import NavLinks from './NavLinks'
+import ThemeToggle from './ThemeToggle'
 
 // App name at the top. On wide screens the nav links move up here too.
 // Once someone is logged in it also shows who that is and a Log out button
@@ -27,11 +28,13 @@ export default function TopBar() {
         <span className="brand-name">Ticked</span>
       </Link>
       {user && (
-        <>
-          <nav className="topnav" aria-label="Main">
-            <NavLinks />
-          </nav>
-          <div className="account">
+        <nav className="topnav" aria-label="Main">
+          <NavLinks />
+        </nav>
+      )}
+      <div className="account">
+        {user && (
+          <>
             <p className="account-name" title={user.email}>
               <span className="visually-hidden">Logged in as </span>
               {user.name}
@@ -39,9 +42,10 @@ export default function TopBar() {
             <button type="button" className="btn btn-small btn-quiet" onClick={handleLogOut}>
               Log out
             </button>
-          </div>
-        </>
-      )}
+          </>
+        )}
+        <ThemeToggle />
+      </div>
     </header>
   )
 }
